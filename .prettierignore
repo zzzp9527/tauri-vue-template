@@ -1,0 +1,29 @@
+# Ignore artifacts:
+build
+dist
+
+# Ignore all contents of the output directory
+output/
+
+# Ignore specific files:
+*.min.js
+*.min.css
+
+# Ignore dotfiles:
+.git
+.vscode
+.idea
+
+# Ignore logs and temporary files:
+*.log
+tmp/
+
+# Ignore package manager files:
+node_modules/
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# Tauri specific
+src-tauri/target/
+src-tauri/gen/

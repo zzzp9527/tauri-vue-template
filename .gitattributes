@@ -1,0 +1,6 @@
+# .gitattributes
+
+# 自动检测文本文件。对于所有被 Git 识别为文本文件的文件，
+# 在检出（checkout）时，根据你的操作系统配置转换换行符。
+# 在提交（commit）时，则一律标准化为 LF (Unix-style) 格式。
+* text=auto eol=lf

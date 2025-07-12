@@ -1,0 +1,25 @@
+# Ignore build directories
+/dist/
+/build/
+
+# Ignore node modules
+/node_modules/
+
+# Ignore TypeScript declaration files
+/*.d.ts
+
+# Ignore Tauri specific directories
+/src-tauri/target/
+/src-tauri/gen/
+
+# Ignore test files
+/tests/
+/__tests__/
+
+# Ignore dotfiles
+.*
+!.eslintrc.js
+
+# Ignore IDE specific files
+.vscode/
+.idea/
