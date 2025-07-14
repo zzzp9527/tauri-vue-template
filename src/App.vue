@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { warn, debug, trace, info, error } from '@tauri-apps/plugin-log'
 
 const greetMsg = ref("");
 const name = ref("");
@@ -8,6 +9,14 @@ const name = ref("");
 async function greet() {
   // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
   greetMsg.value = await invoke("greet", { name: name.value });
+}
+
+function log() {
+  info('Hello, Tauri!')
+  debug('This is a debug message')
+  trace('This is a trace message')
+  warn('This is a warn message')
+  error('This is an error message')
 }
 </script>
 
@@ -31,6 +40,7 @@ async function greet() {
     <form class="row" @submit.prevent="greet">
       <input id="greet-input" v-model="name" placeholder="Enter a name..." />
       <button type="submit">Greet</button>
+      <button type="button" @click="log">Log</button>
     </form>
     <p>{{ greetMsg }}</p>
   </main>
