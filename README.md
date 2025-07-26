@@ -27,7 +27,10 @@ Build
   pnpm tauri build
 ```
 
+## Console
 
+Mac 上通过 Command + Option + I 打开 Console
+Win 上通过 Ctrl + Shift + I 打开 Console
 
 ## Log
 
