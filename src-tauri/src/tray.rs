@@ -8,7 +8,7 @@ use tauri::{
 
 // 创建一个公共函数，它接收 App 句柄并返回一个 Result
 // 所有托盘逻辑都在这里
-pub fn create_tray(app: &mut App) -> Result<()> {
+pub fn init_tray(app: &mut App) -> Result<()> {
     // 1. 创建托盘菜单
     let quit_item = MenuItem::with_id(app, "quit", "退出应用", true, None::<&str>)?;
     let hide_item = MenuItem::with_id(app, "hide", "隐藏窗口", true, None::<&str>)?;
