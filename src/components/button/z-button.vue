@@ -12,20 +12,20 @@
 defineOptions({ name: "ZButton" });
 import { computed } from "vue";
 
+type ButtonVariant = "default" | "text" | "primary" | "danger" | "info";
+
 type ButtonSize = "sm" | "md" | "lg";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "outline";
-
 interface OButtonProps {
-  size?: ButtonSize;
   variant?: ButtonVariant;
+  size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
 }
 
 const props = withDefaults(defineProps<OButtonProps>(), {
   size: "md",
-  variant: "primary",
+  variant: "default",
   disabled: false,
   loading: false,
 });
@@ -37,20 +37,22 @@ const sizeClasses = {
 };
 
 const variantClasses = {
-  primary: "bg-blue-600 text-grey-500 hover:bg-blue-700",
-  secondary: "bg-gray-200 text-gray-800 hover:bg-gray-300",
-  danger: "bg-red-600 text-white hover:bg-red-700",
-  outline: "bg-transparent border border-blue-600 text-blue-600 hover:bg-blue-50",
+  default: "bg-base text-primary-text",
+  text: "bg-transparent text-primary-text",
+  primary: "bg-primary text-primary-text",
+  danger: "bg-danger text-primary-text",
+  info: "bg-info text-primary-text",
 };
 
 const disabledClasses = "opacity-50 cursor-not-allowed";
 
+const baseClasses = "inline-flex items-center justify-center cursor-pointer";
+
 const computedClass = computed(() => [
-  "inline-flex items-center justify-center rounded transition-colors duration-150 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
+  baseClasses,
   sizeClasses[props.size],
   variantClasses[props.variant],
   props.disabled || props.loading ? disabledClasses : "",
   // 允许用户传入自定义 class
-  // (会自动合并，因为 $attrs.class 也会挂到根节点)
 ]);
 </script>

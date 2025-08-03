@@ -19,9 +19,9 @@
     <!-- 2. 开关的轨道 (背景) -->
     <div
       :class="[
-        'rounded-full transition-colors duration-200',
+        'rounded-full transition-colors duration-200 border border-border',
         'peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-offset-2 peer-focus:ring-blue-500',
-        'peer-checked:bg-blue-600 bg-gray-300',
+        'peer-checked:bg-primary bg-gray-300',
         sizes[props.size].track,
       ]"
     ></div>

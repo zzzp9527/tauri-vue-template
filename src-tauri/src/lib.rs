@@ -20,7 +20,10 @@ pub fn run() {
             Ok(())
         })
         // 注册命令
-        .invoke_handler(tauri::generate_handler![commands::greet])
+        .invoke_handler(tauri::generate_handler![
+            commands::greet,
+            commands::get_settings_command,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
