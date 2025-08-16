@@ -1,4 +1,4 @@
 export interface GlobalSettings {
-    theme: string;
+    theme: 'light' | 'dark';
     auto_start: boolean
 }

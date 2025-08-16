@@ -1,26 +1,18 @@
 import { createApp } from "vue";
+import { createPinia } from "pinia";
 import App from "./App.vue";
 import "./index.css";
-import { invoke } from "@tauri-apps/api/core";
-import { GlobalSettings } from "./type";
+import { useSettingsStore } from "./stores/useSettingsStore";
 
 async function init() {
-  let settings: GlobalSettings = {
-    theme: "light",
-    auto_start: false,
-  };
+  const app = createApp(App);
+  app.use(createPinia());
 
-  try {
-    settings = await invoke<GlobalSettings>("get_settings_command");
-  } catch (error) {
-    console.error("Failed to initialize app:", error);
-  } finally {
-    const app = createApp(App);
+  // 初始化配置
+  const settingsStore = useSettingsStore();
+  await settingsStore.initSettings();
 
-    app.provide("settings", settings);
-
-    app.mount("#app");
-  }
+  app.mount("#app");
 }
 
 init();
