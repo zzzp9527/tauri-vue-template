@@ -22,7 +22,8 @@ pub fn run() {
         // 注册命令
         .invoke_handler(tauri::generate_handler![
             commands::greet,
-            commands::get_settings_command,
+            commands::get_global_settings_command,
+            commands::set_global_settings_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

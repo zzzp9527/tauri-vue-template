@@ -6,11 +6,17 @@ import ZConfig from "./components/config/z-config.vue";
 import { ref, inject } from "vue";
 import { GlobalSettings } from "./type";
 
+import { invoke } from "@tauri-apps/api/core";
+
 // TODO 使用 pinia 管理状态
 const settings = inject<GlobalSettings>("settings");
 
 const isDarkMode = ref(settings?.theme === "dark");
 const isAutoStart = ref(settings?.auto_start);
+
+const updateSetting = async (key: string, value: any) => {
+  await invoke("set_global_settings_command", { key, value });
+};
 
 const fetchSettingInfo = () => {
   switchMode(isDarkMode.value);
@@ -19,10 +25,12 @@ const fetchSettingInfo = () => {
 const switchMode = (value: boolean) => {
   document.documentElement.setAttribute("data-theme", value ? "dark" : "light");
   isDarkMode.value = value;
+  updateSetting("theme", value ? "dark" : "light");
 };
 
 const switchAutoStart = (value: boolean) => {
   isAutoStart.value = value;
+  updateSetting("auto_start", value);
 };
 
 const triggerLog = () => {

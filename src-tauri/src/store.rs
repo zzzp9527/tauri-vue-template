@@ -1,7 +1,14 @@
-use serde::{Deserialize, Serialize};
-use tauri::{App, AppHandle};
-use tauri_plugin_store::StoreExt;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::json;
+use std::sync::Arc;
+use tauri::{App, AppHandle, Wry};
+use tauri_plugin_store::{Store, StoreExt};
 
+/**
+ * 如果在命令行中注意 Application 后面会跟一个 \
+ * mac: ~/Library/Application Support/{Bundle Identifier}
+ * win: C:\Users\{Username}\AppData\Roaming\{Bundle Identifier}
+ */
 const SETTINGS_FILE: &str = "settings.json";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -21,6 +28,38 @@ impl Default for GlobalSettings {
 }
 
 /**
+ * 确保 store 中 key 对应的字段类型为 T
+ * 如果不存在或类型错误，将使用默认值
+ */
+fn ensure_field<T: Serialize + for<'de> Deserialize<'de>>(
+    store: &Arc<Store<Wry>>,
+    key: &str,
+    default: T,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let value_ok = store
+        .get(key)
+        .and_then(|v| serde_json::from_value::<T>(v.clone()).ok())
+        .is_some();
+
+    if !value_ok {
+        store.set(key, json!(default));
+    }
+
+    Ok(())
+}
+
+pub fn get_with_default<T: DeserializeOwned + Clone>(
+    store: &Store<Wry>,
+    key: &str,
+    default: T,
+) -> T {
+    store
+        .get(key)
+        .and_then(|v| serde_json::from_value::<T>(v.clone()).ok())
+        .unwrap_or(default)
+}
+
+/**
  * 初始化 store 并读取配置
  * 如果在命令行中注意 Application 后面会跟一个 \
  * mac: ~/Library/Application Support/{Bundle Identifier}
@@ -28,32 +67,37 @@ impl Default for GlobalSettings {
  */
 pub fn init_store(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let store = app.store(SETTINGS_FILE)?;
-    // TODO 检测对应文件的格式是否正常，如非法 则更正
+
+    // 检查并修正每个字段
+    let defaults = GlobalSettings::default();
+    ensure_field(&store, "theme", defaults.theme.clone())?;
+    ensure_field(&store, "auto_start", defaults.auto_start)?;
+
+    // 保存修正后的配置
+    store.save()?;
+
     Ok(())
 }
 
-// 注意：读取数据实际上不需要 &mut App，使用 &App 或 AppHandle 更为恰当。
-// 这里保持 &mut App 以与您的原始代码一致，但建议在实际应用中考虑使用 &App。
+/**
+ * 获取全局配置
+ */
 pub fn get_global_settings(app_handle: &AppHandle) -> Result<GlobalSettings, String> {
     let store = app_handle.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
     let defaults = GlobalSettings::default();
 
-    // 1. 尝试获取 "theme" 的值
-    // .and_then(|v| serde_json::from_value(v.clone()).ok()) 尝试将 JsonValue 反序列化为 String
-    // 如果 store 中没有 "theme" 键，或者值的类型不正确，则返回 None
-    // .unwrap_or(defaults.theme) 如果前面返回 None，则使用默认的 theme 值
-    let theme = store.get("theme")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or(defaults.theme);
+    let theme = get_with_default(&store, "theme", defaults.theme.clone());
+    let auto_start = get_with_default(&store, "auto_start", defaults.auto_start);
 
-    // 2. 用同样的方式获取 "auto_start" 的值
-    let auto_start = store.get("auto_start")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or(defaults.auto_start);
+    Ok(GlobalSettings { theme, auto_start })
+}
 
-    // 3. 使用获取到的值（或默认值）构建并返回 GlobalSettings
-    Ok(GlobalSettings {
-        theme,
-        auto_start,
-    })
+pub fn set_global_setting<T: Serialize + for<'de> Deserialize<'de>>(
+    app_handle: &AppHandle,
+    key: &str,
+    value: T,
+) -> Result<(), String> {
+    let store = app_handle.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
+    store.set(key, json!(value));
+    store.save().map_err(|e| e.to_string())
 }
