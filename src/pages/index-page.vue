@@ -35,7 +35,7 @@ const triggerLog = () => {
 </script>
 
 <template>
-  <div class="bg-info h-screen w-screen p-4">
+  <div class="bg-info w-full h-full p-4">
     <header class="text-primary-text text-2xl font-bold p-2">设置</header>
     <div class="flex flex-col gap-4">
       <div class="bg-info p-3 rounded-sm shadow-lg flex flex-col gap-2">

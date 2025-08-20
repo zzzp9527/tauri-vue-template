@@ -9,7 +9,7 @@ initTheme()
 </script>
 
 <template>
-  <div class="bg-info h-screen w-screen p-4">
+  <div class="h-screen w-screen">
     <index-page />
   </div>
 </template>
