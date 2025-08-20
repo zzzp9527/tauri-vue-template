@@ -24,6 +24,12 @@ export const useSettingsStore = defineStore('settings', {
     async updateSettingsField<K extends keyof GlobalSettings>(key: K, value: GlobalSettings[K]) {
       this.settings[key] = value
       await invoke('set_global_settings_command', { key, value })
+    },
+    async getAutostartStatus() {
+      return await invoke<boolean>('get_autostart_status_command')
+    },
+    async setAutostartStatus(status: boolean) {
+      await invoke('set_autostart_status_command', { status })
     }
   }
 })

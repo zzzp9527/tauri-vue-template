@@ -9,19 +9,23 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useLogger } from "@/hooks/useLogger";
 import { useTheme } from "@/hooks/useTheme";
 
-const logger = useLogger()
-const { isDarkMode, switchTheme } = useTheme()
+const logger = useLogger();
+const { isDarkMode, switchTheme } = useTheme();
 
-const settingsStore = useSettingsStore()
+const settingsStore = useSettingsStore();
 
-const settings = settingsStore.settings
-const updateSettingsField = settingsStore.updateSettingsField
+const getAutostartStatus = settingsStore.getAutostartStatus;
+const setAutostartStatus = settingsStore.setAutostartStatus;
 
-const isAutoStart = ref(settings?.auto_start);
+const isAutoStart = ref(false);
+
+const initAutoStart = async () => {
+  isAutoStart.value = await getAutostartStatus();
+};
 
 const switchAutoStart = (value: boolean) => {
   isAutoStart.value = value;
-  updateSettingsField("auto_start", value);
+  setAutostartStatus(value)
 };
 
 const triggerLog = () => {
@@ -32,6 +36,11 @@ const triggerLog = () => {
   logger.error("This is an error message");
 };
 
+const init = () => {
+  initAutoStart();
+};
+
+init();
 </script>
 
 <template>
