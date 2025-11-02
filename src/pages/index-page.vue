@@ -9,6 +9,8 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useLogger } from "@/hooks/useLogger";
 import { useTheme } from "@/hooks/useTheme";
 import { getVersion } from '@tauri-apps/api/app'
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from "@tauri-apps/plugin-process";
 
 const logger = useLogger();
 const { isDarkMode, switchTheme } = useTheme();
@@ -38,6 +40,32 @@ const triggerLog = () => {
   logger.error("This is an error message");
 };
 
+const checkForUpdates = async () => {
+  try {
+    const update = await check();
+    if (update) {
+      console.log(`发现新版本 ${update.version}`);
+
+      // 显示更新提示
+      const shouldUpdate = await confirm(`发现新版本 ${update.version}，是否更新？`);
+
+      if (shouldUpdate) {
+        // 下载并安装更新
+        await update.downloadAndInstall((event) => {
+          if (event.event === 'Progress') {
+            // 更新进度条
+          }
+        });
+
+        // 重启应用
+        await relaunch();
+      }
+    }
+  } catch (error) {
+    console.error('检查更新失败:', error);
+  }
+}
+
 onMounted(async () => {
   version.value = await getVersion();
   logger.info(`当前版本：${version.value}`);
@@ -65,6 +93,11 @@ init();
       <div class="config-card">
         <z-config>
           <z-button variant="text" @click="triggerLog"> 触发日志 </z-button>
+        </z-config>
+      </div>
+       <div class="config-card">
+        <z-config>
+          <z-button variant="text" @click="checkForUpdates"> 检查更新 </z-button>
         </z-config>
       </div>
       <div class="config-card">

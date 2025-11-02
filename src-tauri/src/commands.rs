@@ -34,9 +34,15 @@ pub fn get_autostart_status_command(app_handle: AppHandle) -> bool {
 #[tauri::command]
 pub fn set_autostart_status_command(app_handle: AppHandle, status: bool) -> Result<(), String> {
     if status {
-        app_handle.autolaunch().enable().map_err(|e| e.to_string())?;
+        app_handle
+            .autolaunch()
+            .enable()
+            .map_err(|e| e.to_string())?;
     } else {
-        app_handle.autolaunch().disable().map_err(|e| e.to_string())?;
+        app_handle
+            .autolaunch()
+            .disable()
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
