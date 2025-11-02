@@ -1,8 +1,8 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{TrayIconBuilder, TrayIconEvent},
-    Manager, // 用于获取 app_handle 和 window
     App,     // .setup() 钩子传递的参数类型
+    Manager, // 用于获取 app_handle 和 window
     Result,  // 用于错误处理
 };
 

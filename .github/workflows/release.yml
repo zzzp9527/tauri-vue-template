@@ -1,0 +1,211 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    paths: ['src-tauri/tauri.conf.json']
+
+env:
+  APP_NAME: tauri-vue-template
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      upload_url: ${{ steps.create-release.outputs.upload_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep -o '"version": *"[^"]*"' src-tauri/tauri.conf.json | grep -o '[0-9.]*')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+
+  build:
+    needs: release
+    strategy:
+      fail-fast: false  # 防止一个任务失败导致其他任务被取消
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            arch: aarch64
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            arch: x86_64
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # 设置 pnpm
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v3
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        working-directory: src-tauri
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+        run: pnpm tauri build -- --target ${{ matrix.target }}
+
+      - name: Upload Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: target/${{ matrix.target }}/release/bundle/macos/${{ env.APP_NAME }}.app.tar.gz
+          asset_name: ${{ env.APP_NAME }}_${{ matrix.arch }}.app.tar.gz
+          asset_content_type: application/gzip
+        continue-on-error: true
+
+      - name: Upload Signature
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: target/${{ matrix.target }}/release/bundle/macos/${{ env.APP_NAME }}.app.tar.gz.sig
+          asset_name: ${{ env.APP_NAME }}_${{ matrix.arch }}.app.tar.gz.sig
+          asset_content_type: text/plain
+        continue-on-error: true
+
+      - name: Upload Assets (Alternative path)
+        if: failure()
+        run: |
+          echo "=== Alternative Upload Method ==="
+          echo "Searching for build artifacts..."
+
+          # 搜索 .app.tar.gz 文件
+          APP_FILE=$(find src-tauri/target/${{ matrix.target }}/release -name "*.app.tar.gz" 2>/dev/null | head -1)
+          SIG_FILE=$(find src-tauri/target/${{ matrix.target }}/release -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
+
+          # 如果在特定架构目录中没找到，尝试在整个target目录中搜索
+          if [ -z "$APP_FILE" ]; then
+            echo "Searching in entire target directory..."
+            APP_FILE=$(find src-tauri/target -name "*.app.tar.gz" 2>/dev/null | head -1)
+            SIG_FILE=$(find src-tauri/target -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
+          fi
+
+          # 尝试查找 .dmg 文件作为备选
+          if [ -z "$APP_FILE" ]; then
+            echo "Searching for .dmg files..."
+            DMG_FILE=$(find src-tauri/target -name "*.dmg" 2>/dev/null | head -1)
+            if [ -n "$DMG_FILE" ]; then
+              echo "Found DMG file: $DMG_FILE"
+              curl -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary @"$DMG_FILE" \
+                "${{ needs.release.outputs.upload_url }}?name=${{ env.APP_NAME }}_${{ matrix.arch }}.dmg"
+            fi
+          fi
+
+          if [ -n "$APP_FILE" ]; then
+            echo "Found app file: $APP_FILE"
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/gzip" \
+              --data-binary @"$APP_FILE" \
+              "${{ needs.release.outputs.upload_url }}?name=${{ env.APP_NAME }}_${{ matrix.arch }}.app.tar.gz"
+          else
+            echo "No app.tar.gz file found"
+          fi
+
+          if [ -n "$SIG_FILE" ]; then
+            echo "Found signature file: $SIG_FILE"
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: text/plain" \
+              --data-binary @"$SIG_FILE" \
+              "${{ needs.release.outputs.upload_url }}?name=${{ env.APP_NAME }}_${{ matrix.arch }}.app.tar.gz.sig"
+          else
+            echo "No signature file found"
+          fi
+
+  update-json:
+    needs: [release, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup GitHub CLI
+        uses: cli/cli@v2
+
+      - name: Generate latest.json
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          REPO="${{ github.repository }}"
+          APP_NAME="${{ env.APP_NAME }}"
+          mkdir -p ./downloads
+          gh release download "v$VERSION" --dir ./downloads
+
+          cat > latest.json << EOF
+          {
+            "version": "$VERSION",
+            "notes": "https://github.com/$REPO/releases/tag/v$VERSION",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$(cat ./downloads/${APP_NAME}_aarch64.app.tar.gz.sig)",
+                "url": "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_aarch64.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "$(cat ./downloads/${APP_NAME}_x86_64.app.tar.gz.sig)",
+                "url": "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_x86_64.app.tar.gz"
+              }
+            }
+          }
+          EOF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload latest.json
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: ./latest.json
+          asset_name: latest.json
+          asset_content_type: application/json

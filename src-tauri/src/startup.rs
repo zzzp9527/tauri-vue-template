@@ -1,5 +1,5 @@
-use tauri::{App, Manager};
 use log::info;
+use tauri::{App, Manager};
 use tauri_plugin_autostart::ManagerExt;
 
 pub fn handle_startup(app: &mut App) {
