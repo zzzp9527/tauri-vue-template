@@ -10,11 +10,15 @@ mod tray;
 pub fn run() {
     tauri::Builder::default()
     // 注册所需插件
+    .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_store::Builder::new().build())
     .plugin(tauri_plugin_updater::Builder::new().build())
-    .plugin(tauri_plugin_log::Builder::new().build())
-    .plugin(tauri_plugin_opener::init())
-    .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
+        .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         // 运行应用前的配置
         .setup(|app| {
             startup::handle_startup(app);
