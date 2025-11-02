@@ -1,3 +1,7 @@
 .container {
   background-color: var(--color-primary);
 }
+
+.config-card {
+  @apply bg-info p-3 rounded-sm shadow-lg flex flex-col gap-2;
+}

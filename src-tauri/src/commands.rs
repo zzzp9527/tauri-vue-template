@@ -9,6 +9,7 @@ pub fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+// 获取和更新全局设置
 #[tauri::command]
 pub fn get_global_settings_command(app_handle: AppHandle) -> Result<GlobalSettings, String> {
     // 直接调用我们修改后的 store 函数
@@ -24,6 +25,7 @@ pub fn set_global_settings_command(
     set_global_setting(&app_handle, &key, value)
 }
 
+// 获取和更新自动启动设置
 #[tauri::command]
 pub fn get_autostart_status_command(app_handle: AppHandle) -> bool {
     app_handle.autolaunch().is_enabled().unwrap_or(false)

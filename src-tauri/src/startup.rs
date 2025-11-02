@@ -16,6 +16,7 @@ pub fn handle_startup(app: &mut App) {
         info!("手动启动 -> 显示窗口");
         if let Some(window) = app.get_webview_window("main") {
             window.show().unwrap();
+            window.set_focus().unwrap();
         }
     }
 }

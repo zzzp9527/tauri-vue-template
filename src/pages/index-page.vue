@@ -1,13 +1,14 @@
 <script setup lang="ts">
 defineOptions({ name: "IndexPage" });
 
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import ZButton from "@/components/button/z-button.vue";
 import ZSwitch from "@/components/switch/z-switch.vue";
 import ZConfig from "@/components/config/z-config.vue";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useLogger } from "@/hooks/useLogger";
 import { useTheme } from "@/hooks/useTheme";
+import { getVersion } from '@tauri-apps/api/app'
 
 const logger = useLogger();
 const { isDarkMode, switchTheme } = useTheme();
@@ -17,6 +18,7 @@ const settingsStore = useSettingsStore();
 const getAutostartStatus = settingsStore.getAutostartStatus;
 const setAutostartStatus = settingsStore.setAutostartStatus;
 
+const version = ref('');
 const isAutoStart = ref(false);
 
 const initAutoStart = async () => {
@@ -36,6 +38,11 @@ const triggerLog = () => {
   logger.error("This is an error message");
 };
 
+onMounted(async () => {
+  version.value = await getVersion();
+  logger.info(`当前版本：${version.value}`);
+})
+
 const init = () => {
   initAutoStart();
 };
@@ -47,7 +54,7 @@ init();
   <div class="bg-info w-full h-full p-4">
     <header class="text-primary-text text-2xl font-bold p-2">设置</header>
     <div class="flex flex-col gap-4">
-      <div class="bg-info p-3 rounded-sm shadow-lg flex flex-col gap-2">
+      <div class="config-card">
         <z-config label="夜间模式">
           <z-switch :value="isDarkMode" @change="switchTheme" />
         </z-config>
@@ -55,9 +62,14 @@ init();
           <z-switch :value="isAutoStart" @change="switchAutoStart" />
         </z-config>
       </div>
-      <div class="bg-info p-3 rounded-sm shadow-lg flex flex-col">
+      <div class="config-card">
         <z-config>
           <z-button variant="text" @click="triggerLog"> 触发日志 </z-button>
+        </z-config>
+      </div>
+      <div class="config-card">
+        <z-config>
+          <div>当前版本：<span class=" text-purple-400">{{ version }}</span></div>
         </z-config>
       </div>
     </div>
