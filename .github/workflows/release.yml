@@ -1,0 +1,128 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    paths: ['src-tauri/tauri.conf.json']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      upload_url: ${{ steps.create-release.outputs.upload_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep -o '"version": *"[^"]*"' src-tauri/tauri.conf.json | grep -o '[0-9.]*')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+
+  build:
+    needs: release
+    strategy:
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            arch: aarch64
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            arch: x86_64
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - run: npm install
+      - name: Build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: npm run tauri build -- --target ${{ matrix.target }}
+
+      - name: Upload Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/tauri-vue-template.app.tar.gz
+          asset_name: tauri-vue-template_${{ matrix.arch }}.app.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Signature
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/tauri-vue-template.app.tar.gz.sig
+          asset_name: tauri-vue-template_${{ matrix.arch }}.app.tar.gz.sig
+          asset_content_type: text/plain
+
+  update-json:
+    needs: [release, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup GitHub CLI
+        uses: cli/cli@v2
+
+      - name: Generate latest.json
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          REPO="${{ github.repository }}"
+          mkdir -p ./downloads
+          gh release download "v$VERSION" --dir ./downloads
+
+          cat > latest.json << EOF
+          {
+            "version": "$VERSION",
+            "notes": "https://github.com/$REPO/releases/tag/v$VERSION",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$(cat ./downloads/tauri-vue-template_aarch64.app.tar.gz.sig)",
+                "url": "https://github.com/$REPO/releases/download/v$VERSION/tauri-vue-template_aarch64.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "$(cat ./downloads/tauri-vue-template_x86_64.app.tar.gz.sig)",
+                "url": "https://github.com/$REPO/releases/download/v$VERSION/tauri-vue-template_x86_64.app.tar.gz"
+              }
+            }
+          }
+          EOF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload latest.json
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: ./latest.json
+          asset_name: latest.json
+          asset_content_type: application/json
