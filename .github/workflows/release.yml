@@ -141,7 +141,28 @@ jobs:
       # 解压 Windows 安装包
       - name: Unzip Windows Installer
         if: matrix.platform == 'windows-latest'
-        run: Expand-Archive -Path ${{ matrix.asset_bundle_path }}/nsis/*.nsis.zip -DestinationPath ${{ matrix.asset_bundle_path }}/nsis/unpacked
+        shell: pwsh
+        run: |
+          $nsisDir = "${{ matrix.asset_bundle_path }}/nsis"
+          $destDir = Join-Path $nsisDir "unpacked"
+          New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+
+          # 优先解压 .nsis.zip，如果不存在则回退为复制 .exe
+          $zip = Get-ChildItem -Path $nsisDir -Filter "*.nsis.zip" -File | Select-Object -First 1
+          if ($zip) {
+            Write-Host "Found NSIS zip: $($zip.FullName). Expanding to $destDir"
+            Expand-Archive -Path $zip.FullName -DestinationPath $destDir -Force
+          }
+          else {
+            $exe = Get-ChildItem -Path $nsisDir -Filter "*.exe" -File | Select-Object -First 1
+            if ($exe) {
+              Write-Host "No .nsis.zip found; copying installer $($exe.Name) to $destDir"
+              Copy-Item -Path $exe.FullName -Destination $destDir -Force
+            }
+            else {
+              Write-Host "No NSIS installer (.nsis.zip or .exe) found under $nsisDir"
+            }
+          }
 
       # 仅在 Windows 平台上传 .exe 安装程序
       - name: Upload Windows Installer (.exe)
