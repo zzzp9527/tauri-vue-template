@@ -141,7 +141,28 @@ jobs:
       # 解压 Windows 安装包
       - name: Unzip Windows Installer
         if: matrix.platform == 'windows-latest'
-        run: Expand-Archive -Path ${{ matrix.asset_bundle_path }}/nsis/*.nsis.zip -DestinationPath ${{ matrix.asset_bundle_path }}/nsis/unpacked
+        shell: pwsh
+        run: |
+          $nsisDir = "${{ matrix.asset_bundle_path }}/nsis"
+          $destDir = Join-Path $nsisDir "unpacked"
+          New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+
+          # 优先解压 .nsis.zip，如果不存在则回退为复制 .exe
+          $zip = Get-ChildItem -Path $nsisDir -Filter "*.nsis.zip" -File | Select-Object -First 1
+          if ($zip) {
+            Write-Host "Found NSIS zip: $($zip.FullName). Expanding to $destDir"
+            Expand-Archive -Path $zip.FullName -DestinationPath $destDir -Force
+          }
+          else {
+            $exe = Get-ChildItem -Path $nsisDir -Filter "*.exe" -File | Select-Object -First 1
+            if ($exe) {
+              Write-Host "No .nsis.zip found; copying installer $($exe.Name) to $destDir"
+              Copy-Item -Path $exe.FullName -Destination $destDir -Force
+            }
+            else {
+              Write-Host "No NSIS installer (.nsis.zip or .exe) found under $nsisDir"
+            }
+          }
 
       # 仅在 Windows 平台上传 .exe 安装程序
       - name: Upload Windows Installer (.exe)
@@ -208,41 +229,54 @@ jobs:
 
       - name: Generate latest.json
         run: |
+          set -e
           VERSION="${{ needs.release.outputs.version }}"
           REPO="${{ github.repository }}"
           APP_NAME="${{ env.APP_NAME }}"
           mkdir -p ./downloads
-          # 下载所有本次 release 的 .sig 文件
-          gh release download "v$VERSION" --dir ./downloads --pattern "*.sig"
 
-          # highlight-start
-          # 修改 JSON 生成逻辑以包含所有平台
+          download_sig() {
+            local name="$1"
+            # 若没有匹配的资产，gh 会返回非 0；这里忽略错误并继续
+            gh release download "v$VERSION" --dir ./downloads --pattern "${name}.sig" >/dev/null 2>&1 || true
+            if [ -f "./downloads/${name}.sig" ]; then
+              # 去掉可能的换行符
+              tr -d '\r\n' < "./downloads/${name}.sig"
+            else
+              echo ""
+            fi
+          }
+
+          SIG_MAC_ARM=$(download_sig "${APP_NAME}_aarch64.app.tar.gz")
+          SIG_MAC_X64=$(download_sig "${APP_NAME}_x86_64.app.tar.gz")
+          SIG_LINUX_AMD64=$(download_sig "${APP_NAME}_amd64.AppImage.tar.gz")
+          SIG_WIN_X64=$(download_sig "${APP_NAME}_x64.msi.zip")
+
+          PLATFORMS_ENTRIES=""
+          add_platform() {
+            local key="$1"; local sig="$2"; local url="$3"
+            if [ -n "$sig" ]; then
+              if [ -n "$PLATFORMS_ENTRIES" ]; then PLATFORMS_ENTRIES="$PLATFORMS_ENTRIES,"; fi
+              PLATFORMS_ENTRIES="$PLATFORMS_ENTRIES\n              \"$key\": {\"signature\": \"$sig\", \"url\": \"$url\"}"
+            else
+              echo "Skip $key: signature not found"
+            fi
+          }
+
+          add_platform "darwin-aarch64" "$SIG_MAC_ARM" "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_aarch64.app.tar.gz"
+          add_platform "darwin-x86_64" "$SIG_MAC_X64" "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_x86_64.app.tar.gz"
+          add_platform "linux-x86_64" "$SIG_LINUX_AMD64" "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_amd64.AppImage.tar.gz"
+          add_platform "windows-x86_64" "$SIG_WIN_X64" "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_x64.msi.zip"
+
           cat > latest.json << EOF
           {
             "version": "v$VERSION",
             "notes": "https://github.com/$REPO/releases/tag/v$VERSION",
             "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": "$(cat ./downloads/${APP_NAME}_aarch64.app.tar.gz.sig)",
-                "url": "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_aarch64.app.tar.gz"
-              },
-              "darwin-x86_64": {
-                "signature": "$(cat ./downloads/${APP_NAME}_x86_64.app.tar.gz.sig)",
-                "url": "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_x86_64.app.tar.gz"
-              },
-              "linux-x86_64": {
-                "signature": "$(cat ./downloads/${APP_NAME}_amd64.AppImage.tar.gz.sig)",
-                "url": "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_amd64.AppImage.tar.gz"
-              },
-              "windows-x86_64": {
-                "signature": "$(cat ./downloads/${APP_NAME}_x64.msi.zip.sig)",
-                "url": "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_x64.msi.zip"
-              }
+            "platforms": { $PLATFORMS_ENTRIES
             }
           }
           EOF
-          # highlight-end
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
