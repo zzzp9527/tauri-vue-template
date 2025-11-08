@@ -44,9 +44,37 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             arch: aarch64
+            asset_name_suffix: aarch64
+            asset_bundle_path: src-tauri/target/aarch64-apple-darwin/release/bundle
+            install_package_ext: .dmg
+            install_package_folder: dmg
+            update_package_ext: .app.tar.gz
+
           - platform: macos-latest
             target: x86_64-apple-darwin
             arch: x86_64
+            asset_name_suffix: x86_64
+            asset_bundle_path: src-tauri/target/x86_64-apple-darwin/release/bundle
+            install_package_ext: .dmg
+            install_package_folder: dmg
+            update_package_ext: .app.tar.gz
+
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            arch: x86_64
+            asset_name_suffix: x64
+            asset_bundle_path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle
+            install_package_ext: .nsis.zip
+            update_package_ext: .msi.zip
+
+          - platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            arch: x86_64
+            asset_name_suffix: amd64
+            asset_bundle_path: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle
+            install_package_ext: .rpm
+            install_package_folder: rpm
+            update_package_ext: .AppImage.tar.gz
 
     runs-on: ${{ matrix.platform }}
 
@@ -78,6 +106,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+
       - name: Install dependencies
         run: pnpm install
 
@@ -88,25 +122,74 @@ jobs:
           echo "Current directory: $(pwd)"
           pnpm tauri build --target ${{ matrix.target }}
 
-      - name: Upload Assets
+      - name: Set asset name prefix
+        run: echo "ASSET_NAME_PREFIX=${{ env.APP_NAME }}_${{ matrix.asset_name_suffix }}" >> $GITHUB_ENV
+
+      # 计算文件名并设置环境变量
+      - name: Determine Asset Filename
+        id: get_filename
+        shell: bash # 明确指定 shell 为 bash
+        run: |
+          if [[ "${{ matrix.update_package_ext }}" == ".msi.zip" ]]; then
+            # Windows 的情况: AppName_1.0.0_x86_64.msi.zip
+            FILENAME="${{ env.APP_NAME }}_${{ needs.release.outputs.version }}_${{ matrix.arch }}${{ matrix.update_package_ext }}"
+          else
+            # macOS 和 Linux 的情况: AppName.AppImage.tar.gz 或 AppName.dmg.tar.gz
+            FILENAME="${{ env.APP_NAME }}${{ matrix.update_package_ext }}"
+          fi
+          # 将计算出的文件名写入 GITHUB_ENV，使其成为后续步骤的环境变量
+          echo "ASSET_FILENAME=$FILENAME" >> $GITHUB_ENV
+
+      # 解压 Windows 安装包
+      - name: Unzip Windows Installer
+        if: matrix.platform == 'windows-latest'
+        run: Expand-Archive -Path ${{ matrix.asset_bundle_path }}/nsis/*.nsis.zip -DestinationPath ${{ matrix.asset_bundle_path }}/nsis/unpacked
+
+      # 仅在 Windows 平台上传 .exe 安装程序
+      - name: Upload Windows Installer (.exe)
+        if: matrix.platform == 'windows-latest'
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/${{ env.APP_NAME }}.app.tar.gz
-          asset_name: ${{ env.APP_NAME }}_${{ matrix.arch }}.app.tar.gz
+          asset_path: ${{ matrix.asset_bundle_path }}/nsis/unpacked/*.exe
+          asset_name: ${{ env.ASSET_NAME_PREFIX }}.exe
+          asset_content_type: application/vnd.microsoft.portable-executable
+        continue-on-error: true
+
+      # 仅在非 Windows 平台上传安装包 (macOS & Linux)
+      - name: Upload Installer (macOS & Linux)
+        if: matrix.platform != 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: ${{ matrix.asset_bundle_path }}/${{ matrix.install_package_folder }}/*${{ matrix.install_package_ext }}
+          asset_name: ${{ env.ASSET_NAME_PREFIX }}${{ matrix.install_package_ext }}
+          asset_content_type: application/octet-stream
+        continue-on-error: true
+
+      - name: Upload Updater Package
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: ${{ matrix.asset_bundle_path }}/${{ env.ASSET_FILENAME }}
+          asset_name: ${{ env.ASSET_NAME_PREFIX }}${{ matrix.update_package_ext }}
           asset_content_type: application/gzip
         continue-on-error: true
 
-      - name: Upload Signature
+      - name: Upload Updater Signature
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/${{ env.APP_NAME }}.app.tar.gz.sig
-          asset_name: ${{ env.APP_NAME }}_${{ matrix.arch }}.app.tar.gz.sig
+          asset_path: ${{ matrix.asset_bundle_path }}/${{ env.ASSET_FILENAME }}.sig
+          asset_name: ${{ env.ASSET_NAME_PREFIX }}${{ matrix.update_package_ext }}.sig
           asset_content_type: text/plain
         continue-on-error: true
 
@@ -131,11 +214,14 @@ jobs:
           REPO="${{ github.repository }}"
           APP_NAME="${{ env.APP_NAME }}"
           mkdir -p ./downloads
-          gh release download "v$VERSION" --dir ./downloads
+          # 下载所有本次 release 的 .sig 文件
+          gh release download "v$VERSION" --dir ./downloads --pattern "*.sig"
 
+          # highlight-start
+          # 修改 JSON 生成逻辑以包含所有平台
           cat > latest.json << EOF
           {
-            "version": "$VERSION",
+            "version": "v$VERSION",
             "notes": "https://github.com/$REPO/releases/tag/v$VERSION",
             "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "platforms": {
@@ -146,10 +232,19 @@ jobs:
               "darwin-x86_64": {
                 "signature": "$(cat ./downloads/${APP_NAME}_x86_64.app.tar.gz.sig)",
                 "url": "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_x86_64.app.tar.gz"
+              },
+              "linux-x86_64": {
+                "signature": "$(cat ./downloads/${APP_NAME}_amd64.AppImage.tar.gz.sig)",
+                "url": "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_amd64.AppImage.tar.gz"
+              },
+              "windows-x86_64": {
+                "signature": "$(cat ./downloads/${APP_NAME}_x64.msi.zip.sig)",
+                "url": "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}_x64.msi.zip"
               }
             }
           }
           EOF
+          # highlight-end
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
