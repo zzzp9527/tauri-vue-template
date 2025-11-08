@@ -172,20 +172,29 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: ${{ matrix.asset_bundle_path }}/nsis/unpacked/*.exe
+          asset_path: ${{ env.INSTALLER_PATH }}
           asset_name: ${{ env.ASSET_NAME_PREFIX }}.exe
           asset_content_type: application/vnd.microsoft.portable-executable
         continue-on-error: true
 
+      # 定位安装包路径 (macOS & Linux)
+      - name: Locate Installer Path (macOS & Linux)
+        if: matrix.platform != 'windows-latest'
+        shell: bash
+        run: |
+          INSTALLER_PATH=$(find "${{ matrix.asset_bundle_path }}" -type f -name "*${{ matrix.install_package_ext }}" | head -n 1 || true)
+          echo "Installer path: $INSTALLER_PATH"
+          if [ -n "$INSTALLER_PATH" ]; then echo "INSTALLER_PATH=$INSTALLER_PATH" >> $GITHUB_ENV; fi
+
       # 仅在非 Windows 平台上传安装包 (macOS & Linux)
       - name: Upload Installer (macOS & Linux)
-        if: matrix.platform != 'windows-latest'
+        if: matrix.platform != 'windows-latest' && env.INSTALLER_PATH != ''
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: ${{ matrix.asset_bundle_path }}/${{ matrix.install_package_folder }}/*${{ matrix.install_package_ext }}
+          asset_path: ${{ env.INSTALLER_PATH }}
           asset_name: ${{ env.ASSET_NAME_PREFIX }}${{ matrix.install_package_ext }}
           asset_content_type: application/octet-stream
         continue-on-error: true
@@ -211,6 +220,18 @@ jobs:
           asset_name: ${{ env.ASSET_NAME_PREFIX }}${{ matrix.update_package_ext }}.sig
           asset_content_type: text/plain
         continue-on-error: true
+
+      # Windows: 定位 .exe 与更新包路径，供上传使用
+      - name: Locate Installer & Updater (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $nsisDir = "${{ matrix.asset_bundle_path }}/nsis"
+          $unpacked = Join-Path $nsisDir "unpacked"
+          $exe = Get-ChildItem -Path $unpacked -Filter "*.exe" -File | Select-Object -First 1
+          if (-not $exe) { $exe = Get-ChildItem -Path $nsisDir -Filter "*.exe" -File | Select-Object -First 1 }
+          if ($exe) { Add-Content -Path $env:GITHUB_ENV -Value "INSTALLER_PATH=$($exe.FullName)"; Write-Host "Installer: $($exe.FullName)" }
+
 
   update-json:
     needs: [release, build]
