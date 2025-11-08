@@ -39,3 +39,12 @@ Win 上通过 Ctrl + Shift + I 打开 Console
 - Mac: {homeDir}/Library/Logs/{identifier}
 - Win: {LocalAppData}/{identifier}/logs
 - Linux: $HOME/.local/share/{identifier}/logs
+
+
+## Version
+
+通过执行以下命令来修改项目版本，版本变更后推送到 main 分支自动发布
+
+```bash
+  pnpm bump [patch | minor | major]
+```
